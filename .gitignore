@@ -5,3 +5,8 @@ SKIP
 SKIP_IMAGES
 .pc
 *-pc
+.DS_Store
+out/
+out/
+.DS_Store
+out/

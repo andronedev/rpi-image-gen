@@ -328,6 +328,20 @@ if igconf_isy device_ssh_user1 ; then
 fi
 
 
+# Determine if we should use podman unshare. Default: only when not running as root
+# and when not explicitly disabled via config.
+UNSHARE_CMD=()
+if igconf_isnset sys_use_podman_unshare ; then
+   # Not set in config: choose sensible default (rootless only)
+   if [ "$(id -u)" -ne 0 ] ; then
+      UNSHARE_CMD=(podman unshare)
+   fi
+else
+   if igconf_isy sys_use_podman_unshare ; then
+      UNSHARE_CMD=(podman unshare)
+   fi
+fi
+
 # hook execution
 runh()
 {
@@ -335,7 +349,7 @@ runh()
    local hook=$(basename "$1")
    shift 1
    msg "$hookdir"["$hook"] "$@"
-   env -C $hookdir "${ENV_POST_BUILD[@]}" podman unshare ./"$hook" "$@"
+   env -C $hookdir "${ENV_POST_BUILD[@]}" ${UNSHARE_CMD[@]} ./"$hook" "$@"
    ret=$?
    if [[ $ret -ne 0 ]]
    then
@@ -359,7 +373,7 @@ fi
 
 
 # Generate rootfs
-[[ $ONLY_IMAGE = 1 ]] && true || rund "$IGTOP" podman unshare bdebstrap \
+[[ $ONLY_IMAGE = 1 ]] && true || rund "$IGTOP" ${UNSHARE_CMD[@]} bdebstrap \
    "${ARGS_LAYERS[@]}" \
    "${ENV_ROOTFS[@]}" \
    --force \
@@ -378,10 +392,10 @@ fi
 
 # post-build: apply rootfs overlays - image layout then device
 if [ -d ${IGIMAGE}/device/rootfs-overlay ] ; then
-   run podman unshare rsync -a ${IGIMAGE}/device/rootfs-overlay/ ${IGconf_sys_target}
+   run ${UNSHARE_CMD[@]} rsync -a ${IGIMAGE}/device/rootfs-overlay/ ${IGconf_sys_target}
 fi
 if [ -d ${IGDEVICE}/device/rootfs-overlay ] ; then
-   run podman unshare rsync -a ${IGDEVICE}/device/rootfs-overlay/ ${IGconf_sys_target}
+   run ${UNSHARE_CMD[@]} rsync -a ${IGDEVICE}/device/rootfs-overlay/ ${IGconf_sys_target}
 fi
 
 
@@ -421,7 +435,7 @@ mkdir -p "$IGconf_sys_deploydir"
 # Generate image(s)
 for f in "${IGconf_sys_outputdir}"/genimage*.cfg; do
    [[ -f "$f" ]] || continue
-   run podman unshare env "${ENV_POST_BUILD[@]}" genimage \
+   run ${UNSHARE_CMD[@]} env "${ENV_POST_BUILD[@]}" genimage \
       --rootpath ${IGconf_sys_target} \
       --tmppath $GTMP \
       --inputpath ${IGconf_sys_outputdir}   \
